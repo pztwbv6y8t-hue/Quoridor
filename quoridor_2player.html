@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17211d">
+<title>コリドール — 2人対戦</title>
+<style>
+:root{
+  --bg:#101815;--panel:#1b2822;--panel2:#24342c;--ink:#f4f1e8;--muted:#b9c5ba;
+  --line:#405248;--gold:#e7bd69;--p1:#e9b85d;--p2:#8dc5e9;--cell:#e8e2cf;
+  --cell2:#d9d0b8;--legal:#a8c98c;--danger:#e48a79;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -20%,#30483a 0%,var(--bg) 58%);color:var(--ink);font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
+button{font:inherit}
+.app{width:min(100%,920px);margin:auto;padding:22px 18px 36px}
+header{text-align:center;margin-bottom:18px}
+h1{margin:0;font-size:clamp(28px,5vw,42px);letter-spacing:.08em}
+.sub{color:var(--muted);font-size:13px;margin-top:4px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:start}
+.board-card,.side-card{background:linear-gradient(160deg,#23332b,#19251f);border:1px solid #3a4d41;border-radius:20px;box-shadow:0 18px 45px #0005}
+.board-card{padding:clamp(10px,2.5vw,22px)}
+.board-wrap{width:100%;max-width:620px;margin:auto;aspect-ratio:1;position:relative}
+svg{width:100%;height:100%;display:block;touch-action:manipulation;user-select:none}
+.side-card{padding:18px;display:flex;flex-direction:column;gap:15px}
+.turn{padding:13px 14px;border-radius:13px;background:#111b16;border:1px solid var(--line)}
+.turn small{display:block;color:var(--muted);font-size:11px;letter-spacing:.08em}
+.turn strong{display:flex;align-items:center;gap:9px;font-size:18px;margin-top:4px}
+.dot{width:13px;height:13px;border-radius:50%;display:inline-block;box-shadow:0 0 0 3px #fff2}
+.p1{background:var(--p1)}.p2{background:var(--p2)}
+.stock{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.stock-box{background:#111b16;border:1px solid var(--line);border-radius:12px;padding:11px}
+.stock-box small{display:block;color:var(--muted);font-size:11px}
+.stock-box b{font-size:25px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{border:1px solid #506457;background:#2a3b31;color:var(--ink);padding:11px 10px;border-radius:11px;cursor:pointer;transition:.15s}
+button:hover{background:#354b3d;border-color:#8ba18e}
+button:active{transform:translateY(1px)}
+button.active{background:#775d2c;border-color:var(--gold);color:#fff4d6}
+button.primary{background:var(--gold);border-color:var(--gold);color:#20251d;font-weight:750}
+button:disabled{opacity:.4;cursor:not-allowed}
+.status{min-height:48px;color:var(--muted);font-size:13px;line-height:1.55}
+.rules{border-top:1px solid var(--line);padding-top:13px}
+.rules summary{cursor:pointer;font-weight:700;font-size:14px}
+.rules ul{padding-left:18px;color:var(--muted);font-size:12px;line-height:1.7}
+footer{text-align:center;color:#839389;font-size:11px;margin-top:15px}
+#winOverlay{position:fixed;inset:0;background:#07100dcc;display:none;place-items:center;padding:20px;z-index:5}
+#winOverlay.show{display:grid}
+.winbox{background:#24352b;border:1px solid #71836f;border-radius:20px;padding:28px;text-align:center;width:min(100%,360px);box-shadow:0 20px 70px #0009}
+.winbox h2{font-size:27px;margin:0 0 8px}.winbox p{color:var(--muted);margin:0 0 20px}
+@media(max-width:720px){
+ .app{padding:15px 10px 26px}.layout{grid-template-columns:1fr;gap:12px}
+ .side-card{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
+ .turn,.status,.rules{grid-column:1/-1}
+ .stock{grid-column:1/-1}
+ .actions{grid-column:1/-1}
+ .side-card .rules{padding-top:10px}
+}
+@media(max-width:390px){.actions{grid-template-columns:1fr 1fr}.side-card{padding:10px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>QUORIDOR</h1><div class="sub">ふたりで遊ぶ、道を読むボードゲーム</div></header>
+<main class="layout">
+<section class="board-card" aria-label="ゲーム盤">
+ <div class="board-wrap"><svg id="board" viewBox="0 0 600 600" role="img" aria-label="9かける9のコリドール盤面"></svg></div>
+</section>
+<aside class="side-card">
+ <div class="turn"><small>NOW PLAYING</small><strong id="turnLabel"><span class="dot p1"></span> プレイヤー1の番</strong></div>
+ <div class="stock">
+  <div class="stock-box"><small><span class="dot p1"></span> プレイヤー1</small><b id="walls1">10</b><small>壁の残り</small></div>
+  <div class="stock-box"><small><span class="dot p2"></span> プレイヤー2</small><b id="walls2">10</b><small>壁の残り</small></div>
+ </div>
+ <div class="actions">
+  <button id="moveBtn" class="active" type="button">コマを動かす</button>
+  <button id="wallBtn" type="button">壁を置く</button>
+  <button id="rotateBtn" type="button" aria-label="壁の向きを切り替える">壁の向き：横</button>
+  <button id="restartBtn" type="button">最初から</button>
+ </div>
+ <div class="status" id="status" aria-live="polite">光っているマスをタップしてコマを進めよう。</div>
+ <details class="rules">
+  <summary>遊び方・ルール</summary>
+  <ul>
+   <li>自分の番に「1マス移動」か「壁を1枚設置」のどちらかを行います。</li>
+   <li>コマは上下左右に移動。相手と隣り合った場合は飛び越せます。</li>
+   <li>飛び越す先が壁や盤の端でふさがれている場合、相手の左右どちらかへ斜めに進めます。</li>
+   <li>壁は2マス分。重ねたり交差させたりできません。</li>
+   <li>どちらのプレイヤーもゴールへの道が残るように壁を置きます。</li>
+   <li>相手側の一番奥の列に先に着いた人の勝ち！</li>
+  </ul>
+ </details>
+</aside>
+</main>
+<footer>同じ端末を交互に使って対戦するローカル2人プレイです。</footer>
+</div>
+<div id="winOverlay" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+ <div class="winbox"><h2 id="winTitle">プレイヤー1の勝ち！</h2><p>見事にゴールしました。</p><button class="primary" id="againBtn" type="button">もう一度遊ぶ</button></div>
+</div>
+<script>
+"use strict";
+const N=9, CELL=56, STEP=68, SIZE=600;
+const svg=document.getElementById("board");
+const state={pawns:[{r:8,c:4},{r:0,c:4}],walls:[],remaining:[10,10],turn:0,mode:"move",orientation:"h",over:false};
+const $=id=>document.getElementById(id);
+const NS="http://www.w3.org/2000/svg";
+function el(tag,attrs={},parent=svg){const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,v);parent.appendChild(n);return n}
+function sameWall(a,b){return a.o===b.o&&a.r===b.r&&Math.abs(a.c-b.c)<2}
+function crosses(a,b){return a.o!==b.o&&a.r===b.r&&a.c===b.c}
+function hasWallBetween(r1,c1,r2,c2,walls=state.walls){
+ for(const w of walls){
+  if(c1===c2&&Math.abs(r1-r2)===1&&w.o==="h"&&w.r===Math.min(r1,r2)&&(c1===w.c||c1===w.c+1))return true;
+  if(r1===r2&&Math.abs(c1-c2)===1&&w.o==="v"&&w.c===Math.min(c1,c2)&&(r1===w.r||r1===w.r+1))return true;
+ }
+ return false;
+}
+function inside(r,c){return r>=0&&r<N&&c>=0&&c<N}
+function reachable(start,goalRow,walls){
+ const q=[start],seen=new Set([start.r+","+start.c]);
+ for(let i=0;i<q.length;i++){
+  const p=q[i];if(p.r===goalRow)return true;
+  for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const r=p.r+dr,c=p.c+dc,k=r+","+c;
+   if(inside(r,c)&&!seen.has(k)&&!hasWallBetween(p.r,p.c,r,c,walls)){seen.add(k);q.push({r,c})}
+  }
+ }
+ return false;
+}
+function validWall(w){
+ if(w.r<0||w.r>7||w.c<0||w.c>7)return false;
+ if(state.walls.some(x=>sameWall(x,w)||crosses(x,w)))return false;
+ const next=[...state.walls,w];
+ return reachable(state.pawns[0],0,next)&&reachable(state.pawns[1],8,next);
+}
+function legalMoves(player=state.turn){
+ const me=state.pawns[player],opp=state.pawns[1-player],out=[];
+ for(const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){
+  const r=me.r+dr,c=me.c+dc;
+  if(!inside(r,c)||hasWallBetween(me.r,me.c,r,c))continue;
+  if(r!==opp.r||c!==opp.c){out.push({r,c});continue}
+  const br=r+dr,bc=c+dc;
+  if(inside(br,bc)&&!hasWallBetween(r,c,br,bc)){out.push({r:br,c:bc});}
+  else{
+   for(const side of [-1,1]){
+    const sr=r+(dc!==0?side:0),sc=c+(dr!==0?side:0);
+    if(inside(sr,sc)&&!hasWallBetween(r,c,sr,sc))out.push({r:sr,c:sc});
+   }
+  }
+ }
+ return out.filter((p,i,a)=>a.findIndex(x=>x.r===p.r&&x.c===p.c)===i);
+}
+function draw(){
+ svg.replaceChildren();
+ // Background and wall-placement hit zones. Cell shapes are drawn later so they take click priority.
+ el("rect",{x:0,y:0,width:SIZE,height:SIZE,rx:18,fill:"#c8bea5"});
+ const legal=legalMoves();
+ if(state.mode==="wall"&&!state.over){
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++)for(const o of ["h","v"]){
+   const w={r,c,o};if(o!==state.orientation||!validWall(w))continue;
+   const x=c*STEP,y=r*STEP;
+   if(o==="h")el("rect",{x:x+42,y:y+CELL-9,width:40,height:30,rx:7,fill:"#e7bd69","fill-opacity":.22,stroke:"#f2cf84","stroke-opacity":.65,"stroke-width":1.5,"data-wall":`${o},${r},${c}`,class:"wall-hit"});
+   else el("rect",{x:x+CELL-9,y:y+42,width:30,height:40,rx:7,fill:"#e7bd69","fill-opacity":.22,stroke:"#f2cf84","stroke-opacity":.65,"stroke-width":1.5,"data-wall":`${o},${r},${c}`,class:"wall-hit"});
+  }
+ }
+ // Cells
+ for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+  const isLegal=state.mode==="move"&&legal.some(p=>p.r===r&&p.c===c)&&!state.over;
+  el("rect",{x:c*STEP,y:r*STEP,width:CELL,height:CELL,rx:8,fill:isLegal?"#a8c98c":((r+c)%2?"#d9d0b8":"#e8e2cf"),stroke:isLegal?"#64845a":"#b9ad91","stroke-width":isLegal?3:1.2,"data-cell":`${r},${c}`,class:"cell"});
+ }
+ // Placed walls
+ for(const w of state.walls){
+  const x=w.c*STEP,y=w.r*STEP;
+  if(w.o==="h")el("rect",{x:x,y:y+CELL-6,width:STEP*2-12,height:12,rx:5,fill:w.owner===0?"#c18a36":"#5594bd",stroke:"#493e2b","stroke-width":1.5});
+  else el("rect",{x:x+CELL-6,y:y,width:12,height:STEP*2-12,rx:5,fill:w.owner===0?"#c18a36":"#5594bd",stroke:"#493e2b","stroke-width":1.5});
+ }
+ // Pawns
+ state.pawns.forEach((p,i)=>{
+  const cx=p.c*STEP+CELL/2,cy=p.r*STEP+CELL/2;
+  el("circle",{cx,cy:cy+2,r:20,fill:"#0004"});
+  el("circle",{cx,cy,r:19,fill:i===0?"#e9b85d":"#8dc5e9",stroke:"#fff3","stroke-width":3});
+  el("circle",{cx,cy,r:7,fill:"#243129","fill-opacity":.65});
+  el("text",{x:cx,y:cy+5,"text-anchor":"middle","font-size":12,"font-weight":800,fill:"#17211d"},svg).textContent=i===0?"1":"2";
+ });
+ svg.querySelectorAll("[data-cell]").forEach(n=>n.addEventListener("click",()=>onCell(n.dataset.cell)));
+ svg.querySelectorAll("[data-wall]").forEach(n=>n.addEventListener("click",()=>onWall(n.dataset.wall)));
+ updatePanel();
+}
+function updatePanel(){
+ $("turnLabel").innerHTML=`<span class="dot ${state.turn===0?"p1":"p2"}"></span> プレイヤー${state.turn+1}の番`;
+ $("walls1").textContent=state.remaining[0];$("walls2").textContent=state.remaining[1];
+ $("moveBtn").classList.toggle("active",state.mode==="move");
+ $("wallBtn").classList.toggle("active",state.mode==="wall");
+ $("rotateBtn").disabled=state.mode!=="wall"||state.over;
+ $("rotateBtn").textContent=`壁の向き：${state.orientation==="h"?"横":"縦"}`;
+}
+function message(s){$("status").textContent=s}
+function finish(player){
+ state.over=true;draw();
+ $("winTitle").textContent=`プレイヤー${player+1}の勝ち！`;
+ $("winOverlay").classList.add("show");
+}
+function nextTurn(){
+ const winner=state.pawns.findIndex((p,i)=>p.r===(i===0?0:8));
+ if(winner!==-1){finish(winner);return}
+ state.turn=1-state.turn;state.mode="move";draw();
+ message(`プレイヤー${state.turn+1}の番。光っているマスをタップしてね。`);
+}
+function onCell(value){
+ if(state.over||state.mode!=="move")return;
+ const [r,c]=value.split(",").map(Number);
+ if(!legalMoves().some(p=>p.r===r&&p.c===c)){message("そこには移動できないよ。光っているマスを選んでね。");return}
+ state.pawns[state.turn]={r,c};nextTurn();
+}
+function onWall(value){
+ if(state.over||state.mode!=="wall")return;
+ const [o,r,c]=value.split(",");const w={o,r:+r,c:+c,owner:state.turn};
+ if(state.remaining[state.turn]<=0){message("壁を使い切っているので、コマを動かしてね。");return}
+ if(!validWall(w)){message("その場所には壁を置けないよ。重なり・交差・道の封鎖を確認してね。");return}
+ state.walls.push(w);state.remaining[state.turn]--;nextTurn();
+}
+$("moveBtn").addEventListener("click",()=>{if(state.over)return;state.mode="move";draw();message("光っているマスをタップしてコマを進めよう。")});
+$("wallBtn").addEventListener("click",()=>{if(state.over)return;if(state.remaining[state.turn]<=0){message("壁を使い切っているので、コマを動かしてね。");return}state.mode="wall";draw();message("光っている壁の置き場所をタップ。向きは下のボタンで切り替えられるよ。")});
+$("rotateBtn").addEventListener("click",()=>{if(state.over)return;state.orientation=state.orientation==="h"?"v":"h";draw();message("壁の向きを切り替えたよ。置きたい場所をタップしてね。")});
+function restart(){
+ state.pawns=[{r:8,c:4},{r:0,c:4}];state.walls=[];state.remaining=[10,10];state.turn=0;state.mode="move";state.orientation="h";state.over=false;
+ $("winOverlay").classList.remove("show");draw();message("新しいゲームを始めよう。プレイヤー1から！");
+}
+$("restartBtn").addEventListener("click",restart);
+$("againBtn").addEventListener("click",restart);
+draw();
+</script>
+</body>
+</html>
